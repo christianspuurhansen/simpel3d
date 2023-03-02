@@ -220,7 +220,7 @@ inline unsigned char fade_color(unsigned char col, float d) // {{{
 // De skærmkoordinater der tegnes på,
 // gemmes afstanden i zbuf, så det altid
 // er det nærmeste objekt der kan ses
-void tegn_hline(SDL_Surface *dest, vector<float> &zbuf, int y, int x1, float d1, int x2,float d2, unsigned char r, unsigned char g, unsigned char b) // {{{
+inline void tegn_hline(SDL_Surface *dest, vector<float> &zbuf, int y, int x1, float d1, int x2,float d2, unsigned char r, unsigned char g, unsigned char b) // {{{
 { //cout << "tegn_hline(" << y << "," << x1 << "," << d1 << "," << x2 << "," << d2 << "," << r << "," << g << "," << b <<")" << endl;
 
   if (x2<x1)
@@ -263,7 +263,7 @@ void tegn_hline(SDL_Surface *dest, vector<float> &zbuf, int y, int x1, float d1,
 } // }}}
 
 // Tegn en trekant på dest ud fra skærmkoordinater
-void tegn_trekant2d(SDL_Surface *dest, vector<float> &zbuf, int x1, int y1, float d1, int x2, int y2, float d2, int x3, int y3, float d3, int r, int g, int b) // {{{
+inline void tegn_trekant2d(SDL_Surface *dest, vector<float> &zbuf, int x1, int y1, float d1, int x2, int y2, float d2, int x3, int y3, float d3, int r, int g, int b) // {{{
 { // Test om vi kan afvise at tegne
   if (d1<=min_dist || d2<=min_dist || d3<=min_dist)
     return;
@@ -329,7 +329,7 @@ void tegn_trekant2d(SDL_Surface *dest, vector<float> &zbuf, int x1, int y1, floa
 } // }}}
 
 // Tegn en trekant ud fra 3D koordinater
-void tegn_trekant3d(SDL_Surface *dest, vector<float>&zbuf, const Tilstand &t, const Trekant &trekant) // {{{
+inline void tegn_trekant3d(SDL_Surface *dest, vector<float>&zbuf, const Tilstand &t, const Trekant &trekant) // {{{
 { // Forskyd koordinater
   float tx1=trekant.myX1-t.mig_x;
   float ty1=trekant.myY1-t.mig_y;
@@ -374,7 +374,7 @@ void tegn_trekant3d(SDL_Surface *dest, vector<float>&zbuf, const Tilstand &t, co
 // Bevæg spilleren ud fra tilstanden om
 // hvilke taster der er trykket, samt
 // spillerens retning
-void bevaeg(Tilstand &t, size_t ticks=10) // {{{
+inline void bevaeg(Tilstand &t, size_t ticks=10) // {{{
 { if (t.tast_op)
   { t.mig_x+=t.mig_h_cos*t.mig_v_cos*0.03*ticks;
     t.mig_y+=t.mig_h_sin*t.mig_v_cos*0.03*ticks;
@@ -404,7 +404,7 @@ void bevaeg(Tilstand &t, size_t ticks=10) // {{{
 // Håndter hændelser som tastetryk og
 // musebevægelser, og gem ændringerne i
 // tilstanden
-void haandter_haendelse(const SDL_Event &e, Tilstand &t) // {{{
+inline void haandter_haendelse(const SDL_Event &e, Tilstand &t) // {{{
 { switch (e.type)
   { case SDL_KEYDOWN:
       switch (e.key.keysym.sym)
