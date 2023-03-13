@@ -12,7 +12,7 @@ using namespace std;
 #define WINDOWDEAPTH 24
 size_t bredde=800;
 size_t hoejde=600;
-float max_dist=256.0;
+float max_dist=200.0;
 float min_dist=1.0;
   
 /* Definer hvad en trekant er
@@ -143,6 +143,54 @@ vector<Trekant> laes_stl(const string &fname, char r, char g, char b) // {{{
   return result;
 } // }}}
 
+// Opdel store trekanter til mindre trekanter
+vector<Trekant> smaa_trekanter(const vector<Trekant> &trekanter, float max_afstand=min_dist*1.5) // {{{
+{ vector<Trekant> lektier=trekanter;
+  vector<Trekant> resultat;
+
+  while (!lektier.empty())
+  { Trekant t=lektier.back();
+    lektier.pop_back();
+    float d12=max(max(abs(t.myX1-t.myX2),abs(t.myY1-t.myY2)),abs(t.myZ1-t.myZ2));
+    float d13=max(max(abs(t.myX1-t.myX3),abs(t.myY1-t.myY3)),abs(t.myZ1-t.myZ3));
+    float d23=max(max(abs(t.myX2-t.myX3),abs(t.myY2-t.myY3)),abs(t.myZ2-t.myZ3));
+    if (d12>max_afstand && d12>=d13 && d12>=d23) // Opdel linjen p1-p2 {{{
+    { lektier.push_back(Trekant(t.myX1, t.myY1, t.myZ1,
+                                (t.myX1+t.myX2)/2.0, (t.myY1+t.myY2)/2.0, (t.myZ1+t.myZ2)/2.0,
+                                t.myX3, t.myY3, t.myZ3,
+                                t.myR, t.myG, t.myB));
+      lektier.push_back(Trekant((t.myX1+t.myX2)/2.0, (t.myY1+t.myY2)/2.0, (t.myZ1+t.myZ2)/2.0,
+                                t.myX2, t.myY2, t.myZ2,
+                                t.myX3, t.myY3, t.myZ3,
+                                t.myR, t.myG, t.myB));
+    } // }}}
+    else if (d13>max_afstand && d13>=d12 && d13>=d23) // Opdel linjen p1-p3 {{{
+    { lektier.push_back(Trekant(t.myX1, t.myY1, t.myZ1,
+                                t.myX2, t.myY2, t.myZ2,
+                                (t.myX1+t.myX3)/2.0, (t.myY1+t.myY3)/2.0, (t.myZ1+t.myZ3)/2.0,
+                                t.myR, t.myG, t.myB));
+      lektier.push_back(Trekant((t.myX1+t.myX3)/2.0, (t.myY1+t.myY3)/2.0, (t.myZ1+t.myZ3)/2.0,
+                                t.myX2, t.myY2, t.myZ2,
+                                t.myX3, t.myY3, t.myZ3,
+                                t.myR, t.myG, t.myB));
+    } // }}}
+    else if (d23>max_afstand && d23>=d12 && d23>=d13) // Opdel linjen p2-p3 {{{
+    { lektier.push_back(Trekant(t.myX1, t.myY1, t.myZ1,
+                                t.myX2, t.myY2, t.myZ2,
+                                (t.myX2+t.myX3)/2.0, (t.myY2+t.myY3)/2.0, (t.myZ2+t.myZ3)/2.0,
+                                t.myR, t.myG, t.myB));
+      lektier.push_back(Trekant(t.myX1, t.myY1, t.myZ1,
+                                (t.myX2+t.myX3)/2.0, (t.myY2+t.myY3)/2.0, (t.myZ2+t.myZ3)/2.0,
+                                t.myX3, t.myY3, t.myZ3,
+                                t.myR, t.myG, t.myB));
+    } // }}}
+    else // Trekanten er lille nok
+      resultat.push_back(t);
+  }
+
+  return resultat;
+} // }}}
+
 /* Definer hvad en tilstand er.
  * I en tilstand gemmes de informationer,
  * der beskriver spillets tilstand.
@@ -176,6 +224,19 @@ class Tilstand // {{{
     float mig_v;
     float mig_v_cos;
     float mig_v_sin;
+    float mig_hastighed_x;
+    float mig_hastighed_y;
+    float mig_hastighed_z;
+    float mig_acceleration_x;
+    float mig_acceleration_y;
+    float mig_acceleration_z;
+    bool frem_blokeret;
+    bool tilbage_blokeret;
+    bool venstre_blokeret;
+    bool hoejre_blokeret;
+    bool op_blokeret;
+    bool ned_blokeret;
+    bool tegn_stereogram;
     bool quit;
 }; // }}}
 Tilstand::Tilstand() // {{{
@@ -186,13 +247,26 @@ Tilstand::Tilstand() // {{{
 , tast_mellemrum(false)
 , mig_x(0.0)
 , mig_y(0.0)
-, mig_z(0.0)
+, mig_z(30.0)
 , mig_h(M_PI/2)
 , mig_h_cos(0.0)
 , mig_h_sin(1.0)
 , mig_v(0.0)
 , mig_v_cos(1.0)
 , mig_v_sin(0.0)
+, mig_hastighed_x(0.0)
+, mig_hastighed_y(0.0)
+, mig_hastighed_z(0.0)
+, mig_acceleration_x(0.0)
+, mig_acceleration_y(0.0)
+, mig_acceleration_z(-0.1)
+, frem_blokeret(false)
+, tilbage_blokeret(false)
+, venstre_blokeret(false)
+, hoejre_blokeret(false)
+, op_blokeret(false)
+, ned_blokeret(false)
+, tegn_stereogram(false)
 , quit(false)
 {
 } // }}}
@@ -264,7 +338,19 @@ inline void tegn_hline(SDL_Surface *dest, vector<float> &zbuf, int y, int x1, fl
 
 // Tegn en trekant på dest ud fra skærmkoordinater
 inline void tegn_trekant2d(SDL_Surface *dest, vector<float> &zbuf, int x1, int y1, float d1, int x2, int y2, float d2, int x3, int y3, float d3, int r, int g, int b) // {{{
-{ // Test om vi kan afvise at tegne
+{ //if (x1>=0 && x1<bredde && y1>=0 && y1<hoejde)
+  //{ pixelRGBA(dest,x1,y1,255,255,255,255);
+  //  zbuf[x1+y1*bredde]=0.0;
+  //}
+  //if (x2>=0 && x2<bredde && y2>=0 && y2<hoejde)
+  //{ pixelRGBA(dest,x2,y2,255,255,255,255);
+  //  zbuf[x2+y2*bredde]=0.0;
+  //}
+  //if (x3>=0 && x3<bredde && y3>=0 && y3<hoejde)
+  //{ pixelRGBA(dest,x3,y3,255,255,255,255);
+  //  zbuf[x3+y3*bredde]=0.0;
+  //}
+  // Test om vi kan afvise at tegne
   if (d1<=min_dist || d2<=min_dist || d3<=min_dist)
     return;
 
@@ -329,7 +415,7 @@ inline void tegn_trekant2d(SDL_Surface *dest, vector<float> &zbuf, int x1, int y
 } // }}}
 
 // Tegn en trekant ud fra 3D koordinater
-inline void tegn_trekant3d(SDL_Surface *dest, vector<float>&zbuf, const Tilstand &t, const Trekant &trekant) // {{{
+inline void tegn_trekant3d(SDL_Surface *dest, vector<float>&zbuf, Tilstand &t, const Trekant &trekant) // {{{
 { // Forskyd koordinater
   float tx1=trekant.myX1-t.mig_x;
   float ty1=trekant.myY1-t.mig_y;
@@ -360,6 +446,134 @@ inline void tegn_trekant3d(SDL_Surface *dest, vector<float>&zbuf, const Tilstand
   float fx3=rx3;
   float fy3=ry3*t.mig_v_cos+rz3*t.mig_v_sin;
   float fz3=rz3*t.mig_v_cos-ry3*t.mig_v_sin;
+  // Gem blokeringer {{{
+  if (fy1<5*min_dist && fy1>0 && abs(fx1)<min_dist && abs(fz1)<min_dist)
+  { t.frem_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (fy2<5*min_dist && fy2>0 && abs(fx2)<min_dist && abs(fz2)<min_dist)
+  { t.frem_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (fy3<5*min_dist && fy3>0 && abs(fx3)<min_dist && abs(fz3)<min_dist)
+  { t.frem_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (fy1>-5*min_dist && fy1<0 && abs(fx1)<min_dist && abs(fz1)<min_dist)
+  { t.tilbage_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (fy2>-5*min_dist && fy2<0 && abs(fx2)<min_dist && abs(fz2)<min_dist)
+  { t.tilbage_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (fy3>-5*min_dist && fy3<0 && abs(fx3)<min_dist && abs(fz3)<min_dist)
+  { t.tilbage_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (fx1<5*min_dist && fx1>0 && abs(fy1)<min_dist && abs(fz1)<min_dist)
+  { t.hoejre_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (fx2<5*min_dist && fx2>0 && abs(fy2)<min_dist && abs(fz2)<min_dist)
+  { t.hoejre_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (fx3<5*min_dist && fx3>0 && abs(fy3)<min_dist && abs(fz3)<min_dist)
+  { t.hoejre_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (fx1>-5*min_dist && fx1<0 && abs(fy1)<min_dist && abs(fz1)<min_dist)
+  { t.venstre_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (fx2>-5*min_dist && fx2<0 && abs(fy2)<min_dist && abs(fz2)<min_dist)
+  { t.venstre_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (fx3>-5*min_dist && fx3<0 && abs(fy3)<min_dist && abs(fz3)<min_dist)
+  { t.venstre_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (rz1<5*min_dist && rz1>0 && abs(rx1)<min_dist && abs(ry1)<min_dist)
+  { t.op_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (rz2<5*min_dist && rz2>0 && abs(rx2)<min_dist && abs(ry2)<min_dist)
+  { t.op_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (rz3<5*min_dist && rz3>0 && abs(rx3)<min_dist && abs(ry3)<min_dist)
+  { t.op_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (rz1>-5*min_dist && rz1<0 && abs(rx1)<min_dist && abs(ry1)<min_dist)
+  { t.ned_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (rz2>-5*min_dist && rz2<0 && abs(rx2)<min_dist && abs(ry2)<min_dist)
+  { t.ned_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  if (rz3>-5*min_dist && rz3<0 && abs(rx3)<min_dist && abs(ry3)<min_dist)
+  { t.ned_blokeret=true;
+    if (trekant.myR>2.0*trekant.myG && trekant.myR>2.0*trekant.myB)
+      cout << "Av av av..." << endl;
+    if (trekant.myB>trekant.myR && trekant.myB>trekant.myG)
+      cout << "Huraaaa!!!!" << endl;
+  }
+  // }}}
   // Find skaermkoordinater
   if (fy1<min_dist || fy2<min_dist || fy3<min_dist)
     return;
@@ -375,31 +589,83 @@ inline void tegn_trekant3d(SDL_Surface *dest, vector<float>&zbuf, const Tilstand
 // hvilke taster der er trykket, samt
 // spillerens retning
 inline void bevaeg(Tilstand &t, size_t ticks=10) // {{{
-{ if (t.tast_op)
-  { t.mig_x+=t.mig_h_cos*t.mig_v_cos*0.03*ticks;
-    t.mig_y+=t.mig_h_sin*t.mig_v_cos*0.03*ticks;
-    t.mig_z+=t.mig_v_sin*0.03*ticks;
+{ t.mig_acceleration_x*=0.8;
+  t.mig_acceleration_y*=0.8;
+  t.mig_acceleration_z=-0.01;
+  t.mig_hastighed_x*=0.8;
+  t.mig_hastighed_y*=0.8;
+  //t.mig_hastighed_z*=0.95;
+
+  if (t.tast_op)
+  { if (t.frem_blokeret) // Rammer objekt
+    { t.mig_hastighed_x=0;
+      t.mig_acceleration_x=0;
+      t.mig_hastighed_y=0;
+      t.mig_acceleration_y=0;
+    }
+    else                 // Accelerer
+    { t.mig_acceleration_x+=t.mig_h_cos*0.2;
+      t.mig_acceleration_y+=t.mig_h_sin*0.2;
+    }
   }
   if (t.tast_ned)
-  { t.mig_x-=t.mig_h_cos*t.mig_v_cos*0.03*ticks;
-    t.mig_y-=t.mig_h_sin*t.mig_v_cos*0.03*ticks;
-    t.mig_z-=t.mig_v_sin*0.03*ticks;
+  { if (t.tilbage_blokeret) // Rammer objekt
+    { t.mig_hastighed_x=0;
+      t.mig_acceleration_x=0;
+      t.mig_hastighed_y=0;
+      t.mig_acceleration_y=0;
+    }
+    else                    // Accelerer
+    { t.mig_acceleration_x-=t.mig_h_cos*0.2;
+      t.mig_acceleration_y-=t.mig_h_sin*0.2;
+    }
   }
   if (t.tast_venstre)
-  { // antag retning_z=0
-    t.mig_x-=t.mig_h_sin*0.03*ticks;
-    t.mig_y+=t.mig_h_cos*0.03*ticks;
+  { if (t.venstre_blokeret) // Rammer objekt
+    { t.mig_hastighed_x=0;
+      t.mig_acceleration_x=0;
+      t.mig_hastighed_y=0;
+      t.mig_acceleration_y=0;
+    }
+    else                    // Accelerer
+    { t.mig_acceleration_x-=t.mig_h_sin*0.2;
+      t.mig_acceleration_y+=t.mig_h_cos*0.2;
+    }
   }
   if (t.tast_hoejre)
-  { // antag retning_z=0
-    t.mig_x+=t.mig_h_sin*0.03*ticks;
-    t.mig_y-=t.mig_h_cos*0.03*ticks;
+  { if (t.hoejre_blokeret) // Rammer objekt
+    { t.mig_hastighed_x=0;
+      t.mig_acceleration_x=0;
+      t.mig_hastighed_y=0;
+      t.mig_acceleration_y=0;
+    }
+    else
+    { t.mig_acceleration_x+=t.mig_h_sin*0.2;
+      t.mig_acceleration_y-=t.mig_h_cos*0.2;
+    }
   }
-  if (t.tast_mellemrum) // # Skyd
-    t.mig_z+=0.03*ticks;
+  if (t.mig_acceleration_z<0)
+  { if (t.ned_blokeret || t.mig_z<=0) // Lander
+    { t.mig_acceleration_z=0;
+      t.mig_hastighed_z=0;
+      if (t.tast_mellemrum) // # Hop
+        t.mig_hastighed_z=1;
+    }
+  }
+  else if (t.mig_acceleration_z>0)
+  { if (t.op_blokeret)
+    { t.mig_acceleration_z=0;
+      t.mig_hastighed_z=0;
+    } 
+  }
 
-  if (t.mig_z>0.0)
-    t.mig_z-=0.003*ticks;
+  t.mig_hastighed_x+=t.mig_acceleration_x;
+  t.mig_hastighed_y+=t.mig_acceleration_y;
+  t.mig_hastighed_z+=t.mig_acceleration_z;
+
+  t.mig_x+=t.mig_hastighed_x*0.01*ticks;
+  t.mig_y+=t.mig_hastighed_y*0.01*ticks;
+  t.mig_z+=t.mig_hastighed_z*0.01*ticks;
 } // }}}
 // Håndter hændelser som tastetryk og
 // musebevægelser, og gem ændringerne i
@@ -435,6 +701,8 @@ inline void haandter_haendelse(const SDL_Event &e, Tilstand &t) // {{{
         case 27: // ESCAPE
           t.quit=true;
           break;
+	case 'x':
+	  t.tegn_stereogram=!t.tegn_stereogram;
         default:
           //cout << "Key Down: " << event.key.keysym.sym << endl;
           break;
@@ -490,10 +758,10 @@ inline void haandter_haendelse(const SDL_Event &e, Tilstand &t) // {{{
         while (t.mig_h>M_PI*2.0)
           t.mig_h-=M_PI*2.0;
         t.mig_v-=(float(e.button.y)-float(hoejde/2))*M_PI/3000.0;
-        while (t.mig_v<0)
-          t.mig_v+=M_PI*2.0;
-        while (t.mig_v>M_PI*2.0)
-          t.mig_v-=M_PI*2.0;
+        if (t.mig_v>M_PI/2.0)
+          t.mig_v=M_PI/2.0;
+        if (t.mig_v<-M_PI/2.0)
+          t.mig_v=-M_PI/2.0;
         t.mig_h_cos=cos(t.mig_h);
         t.mig_h_sin=sin(t.mig_h);
         t.mig_v_cos=cos(t.mig_v);
@@ -520,9 +788,13 @@ inline void haandter_haendelse(const SDL_Event &e, Tilstand &t) // {{{
 int main(int argc, char **argv) // {{{{
 { // Opret vindue
   SDL_Init(SDL_INIT_VIDEO);
-  SDL_Surface *primary = SDL_SetVideoMode(bredde,hoejde,WINDOWDEAPTH,SDL_HWSURFACE | SDL_RESIZABLE | SDL_DOUBLEBUF /*| SDL_FULLSCREEN*/);
+  SDL_Surface *primary = SDL_SetVideoMode(bredde,hoejde,WINDOWDEAPTH,SDL_HWSURFACE | SDL_RESIZABLE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
   SDL_WM_SetCaption("Christians simple 3D program","Christians simple 3D program");
+  SDL_ShowCursor(false);
   vector<float> zbuf(bredde*hoejde,max_dist);
+  vector<Uint8> sbuf(bredde*hoejde*3,0);
+  for (size_t i=0; i<sbuf.size(); ++i)
+    sbuf[i]=rand();
   Tilstand tilstand;
 
   // Åben 3D-Model
@@ -532,24 +804,51 @@ int main(int argc, char **argv) // {{{{
     tilstand.trekanter=laes_stl(fname,0,0,255);
   else if (ext==".obj")
     tilstand.trekanter=laes_obj(fname);
-
+  tilstand.trekanter.push_back(Trekant(-100,-100,0,100,-100,0,100,100,0, 0,100,50));
+  tilstand.trekanter.push_back(Trekant(-100,-100,0,-100,100,0,100,100,0,50,100, 0));
+  cout << "Verdenen indeholder " << tilstand.trekanter.size() << " trekanter." << endl;
+  tilstand.trekanter=smaa_trekanter(tilstand.trekanter);
+  cout << "Verdenen indeholder " << tilstand.trekanter.size() << " små trekanter." << endl;
   // Kør spil
   size_t ticks=0;
   size_t frameTicks=1;
   while (!tilstand.quit)
-  { // Bevæg spilleren
-    bevaeg(tilstand,frameTicks);
-
-    // Farv skærmen sort
+  { // Farv skærmen sort
     SDL_FillRect(primary,NULL,SDL_MapRGB(primary->format,0,0,0));
     for (size_t i=0; i<bredde*hoejde; ++i)
       zbuf[i]=max_dist;
+
+    // Nulstil blokeringer
+    tilstand.frem_blokeret=false;
+    tilstand.tilbage_blokeret=false;
+    tilstand.venstre_blokeret=false;
+    tilstand.hoejre_blokeret=false;
+    tilstand.op_blokeret=false;
+    tilstand.ned_blokeret=false;
 
     // Tegn billede
     for (size_t t=0; t<tilstand.trekanter.size(); ++t)
     { tegn_trekant3d(primary,zbuf,tilstand,tilstand.trekanter[t]);
     }
 
+    // Tegn stereogram
+    if (tilstand.tegn_stereogram)
+    { //for (size_t i=0; i<sbuf.size(); ++i)
+      //  sbuf[i]=rand();
+      for (size_t y=0; y<hoejde; ++y)
+      { for (size_t x=0; x<bredde; ++x)
+        { if (x<200)
+            pixelRGBA(primary,x,y,sbuf[3*(y*bredde+x)],sbuf[3*(y*bredde+x)+1],sbuf[3*(y*bredde+x)+2],255);
+          else
+          { int src_x=(int(x)-100-int(zbuf[x+y*bredde]/2.0));
+            sbuf[3*(y*bredde+x)]=sbuf[3*(y*bredde+src_x)];
+            sbuf[3*(y*bredde+x)+1]=sbuf[3*(y*bredde+src_x)+1];
+            sbuf[3*(y*bredde+x)+2]=sbuf[3*(y*bredde+src_x)+2];
+            pixelRGBA(primary,x,y,sbuf[3*(y*bredde+x)],sbuf[3*(y*bredde+x)+1],sbuf[3*(y*bredde+x)+2],255);
+          }
+        }
+      }
+    }
     // Beregn og vis FPS
     // ticks bruges også til hvor
     // meget bevægelse der skal ske
@@ -563,6 +862,18 @@ int main(int argc, char **argv) // {{{{
     // Flip opdaterer skærmen med det nye billede
     SDL_Flip(primary);
     
+    // Bevæg spilleren
+    for (size_t i=frameTicks; i>0;)
+    { if (i>10)
+      { bevaeg(tilstand,10);
+        i-=10;
+      }
+      else
+      { bevaeg(tilstand,i);
+        i=0;
+      }
+    }
+
     // Håndter handlinger
     SDL_Event event;
     while (SDL_PollEvent(&event))
@@ -574,3 +885,4 @@ int main(int argc, char **argv) // {{{{
   SDL_Quit();
   return 0;
 } // }}}
+
